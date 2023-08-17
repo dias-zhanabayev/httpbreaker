@@ -1,18 +1,3 @@
-# httpbreaker
-Дополнение к http клиенту. Реализует паттерн circuit breaker для http.
-Подвел реализацию github.com/sony/gobreaker к RoundTripper интерфейсу, чтобы можно было использовать вместе с любым http клиентом.
-
-
-Installation
-------------
-
-```
-go get github.com/dias-zhanabayev/httpbreaker
-```
-
-Example
--------
-```go
 package main
 
 import (
@@ -47,5 +32,3 @@ func main() {
 	defer resp.Body.Close()
 	fmt.Println("Response:", resp.Status)
 }
-
-```

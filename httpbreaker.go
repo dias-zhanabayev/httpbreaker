@@ -1,6 +1,7 @@
 package httpbreaker
 
 import (
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -14,6 +15,13 @@ const (
 	StateClosed State = iota
 	StateHalfOpen
 	StateOpen
+)
+
+var (
+	// ErrTooManyRequests is returned when the CB state is half open and the requests count is over the cb maxRequests
+	ErrTooManyRequests = errors.New("too many requests")
+	// ErrOpenState is returned when the CB state is open
+	ErrOpenState = errors.New("circuit breaker is open")
 )
 
 type Counts struct {
@@ -173,6 +181,89 @@ func (cb *CircuitBreaker) RoundTrip(r *http.Request) (*http.Response, error) {
 	return result, err
 }
 
-func (cb *CircuitBreaker) beforeRequest() (uint32, error) {
+func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
 
+	now := time.Now()
+	state, generation := cb.currentState(now)
+
+	if state == StateOpen {
+		return generation, ErrOpenState
+	} else if state == StateHalfOpen && cb.counts.Requests >= cb.maxRequests {
+		return generation, ErrTooManyRequests
+	}
+
+	cb.counts.onRequest()
+	return generation, nil
+}
+
+func (cb *CircuitBreaker) afterRequest(before uint64, success bool) {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+
+	now := time.Now()
+	state, generation := cb.currentState(now)
+	if generation != before {
+		return
+	}
+
+	if success {
+		cb.onSuccess(state, now)
+	} else {
+		cb.onFailure(state, now)
+	}
+}
+
+func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
+	switch state {
+	case StateClosed:
+		cb.counts.onSuccess()
+	case StateHalfOpen:
+		cb.counts.onSuccess()
+		if cb.counts.ConsecutiveSuccesses >= cb.maxRequests {
+			cb.setState(StateClosed, now)
+		}
+	}
+}
+
+func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
+	switch state {
+	case StateClosed:
+		cb.counts.onFailure()
+		if cb.readyToTrip(cb.counts) {
+			cb.setState(StateOpen, now)
+		}
+	case StateHalfOpen:
+		cb.setState(StateOpen, now)
+	}
+}
+
+func (cb *CircuitBreaker) currentState(now time.Time) (State, uint64) {
+	switch cb.state {
+	case StateClosed:
+		if !cb.expiry.IsZero() && cb.expiry.Before(now) {
+			cb.toNewGeneration(now)
+		}
+	case StateOpen:
+		if cb.expiry.Before(now) {
+			cb.setState(StateHalfOpen, now)
+		}
+	}
+	return cb.state, cb.generation
+}
+
+func (cb *CircuitBreaker) setState(state State, now time.Time) {
+	if cb.state == state {
+		return
+	}
+
+	prev := cb.state
+	cb.state = state
+
+	cb.toNewGeneration(now)
+
+	if cb.onStateChange != nil {
+		cb.onStateChange(cb.name, prev, state)
+	}
 }
