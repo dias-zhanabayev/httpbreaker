@@ -24,6 +24,7 @@ var (
 	ErrOpenState = errors.New("circuit breaker is open")
 )
 
+// Settings is a struct for specifying configuration parameters for CircuitBreaker.
 type Settings struct {
 	Name            string
 	MaxRequests     uint32
@@ -54,6 +55,7 @@ type CircuitBreaker struct {
 	tracerTransport http.RoundTripper
 }
 
+// NewCircuitBreaker returns a new CircuitBreaker configured with the given Settings.
 func NewCircuitBreaker(st Settings) *CircuitBreaker {
 	cb := new(CircuitBreaker)
 
@@ -137,6 +139,7 @@ func (cb *CircuitBreaker) toNewGeneration(now time.Time) {
 	}
 }
 
+// RoundTrip implements http.RoundTripper.
 func (cb *CircuitBreaker) RoundTrip(r *http.Request) (*http.Response, error) {
 	generation, err := cb.beforeRequest()
 	if err != nil {
@@ -214,6 +217,7 @@ func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
 	}
 }
 
+// nolint
 func (cb *CircuitBreaker) currentState(now time.Time) (State, uint64) {
 	switch cb.state {
 	case StateClosed:
