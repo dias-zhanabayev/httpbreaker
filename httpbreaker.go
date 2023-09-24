@@ -24,38 +24,6 @@ var (
 	ErrOpenState = errors.New("circuit breaker is open")
 )
 
-type Counts struct {
-	Requests             uint32
-	TotalSuccesses       uint32
-	TotalFailures        uint32
-	ConsecutiveSuccesses uint32
-	ConsecutiveFailures  uint32
-}
-
-func (c *Counts) onRequest() {
-	c.Requests++
-}
-
-func (c *Counts) onSuccess() {
-	c.TotalSuccesses++
-	c.ConsecutiveSuccesses++
-	c.ConsecutiveFailures = 0
-}
-
-func (c *Counts) onFailure() {
-	c.TotalFailures++
-	c.ConsecutiveFailures++
-	c.ConsecutiveSuccesses = 0
-}
-
-func (c *Counts) clear() {
-	c.Requests = 0
-	c.TotalSuccesses = 0
-	c.TotalFailures = 0
-	c.ConsecutiveSuccesses = 0
-	c.ConsecutiveFailures = 0
-}
-
 type Settings struct {
 	Name            string
 	MaxRequests     uint32
@@ -65,6 +33,7 @@ type Settings struct {
 	OnStateChange   func(name string, from State, to State)
 	IsSuccessful    func(err error) bool
 	TracerTransport http.RoundTripper
+	Counts          Counts
 }
 
 // CircuitBreaker is a state machine to prevent sending requests that are likely to fail.
@@ -127,6 +96,12 @@ func NewCircuitBreaker(st Settings) *CircuitBreaker {
 		cb.tracerTransport = st.TracerTransport
 	}
 
+	if st.Counts == nil {
+		cb.counts = NewMemoryCounts()
+	} else {
+		cb.counts = st.Counts
+	}
+
 	cb.toNewGeneration(time.Now())
 
 	return cb
@@ -136,7 +111,7 @@ const defaultInterval = time.Duration(0) * time.Second
 const defaultTimeout = time.Duration(60) * time.Second
 
 func defaultReadyToTrip(counts Counts) bool {
-	return counts.ConsecutiveFailures > 5
+	return counts.ConsecutiveFailures() > 5
 }
 
 func defaultIsSuccessful(err error) bool {
@@ -145,7 +120,7 @@ func defaultIsSuccessful(err error) bool {
 
 func (cb *CircuitBreaker) toNewGeneration(now time.Time) {
 	cb.generation++
-	cb.counts.clear()
+	cb.counts.Clear()
 
 	var zero time.Time
 	switch cb.state {
@@ -190,11 +165,11 @@ func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
 
 	if state == StateOpen {
 		return generation, ErrOpenState
-	} else if state == StateHalfOpen && cb.counts.Requests >= cb.maxRequests {
+	} else if state == StateHalfOpen && cb.counts.Requests() >= cb.maxRequests {
 		return generation, ErrTooManyRequests
 	}
 
-	cb.counts.onRequest()
+	cb.counts.OnRequest()
 	return generation, nil
 }
 
@@ -218,10 +193,10 @@ func (cb *CircuitBreaker) afterRequest(before uint64, success bool) {
 func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
 	switch state {
 	case StateClosed:
-		cb.counts.onSuccess()
+		cb.counts.OnSuccess()
 	case StateHalfOpen:
-		cb.counts.onSuccess()
-		if cb.counts.ConsecutiveSuccesses >= cb.maxRequests {
+		cb.counts.OnSuccess()
+		if cb.counts.ConsecutiveSuccesses() >= cb.maxRequests {
 			cb.setState(StateClosed, now)
 		}
 	}
@@ -230,7 +205,7 @@ func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
 func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
 	switch state {
 	case StateClosed:
-		cb.counts.onFailure()
+		cb.counts.OnFailure()
 		if cb.readyToTrip(cb.counts) {
 			cb.setState(StateOpen, now)
 		}

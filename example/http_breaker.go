@@ -12,8 +12,8 @@ func init() {
 	var st httpbreaker.Settings
 	st.Name = "HTTP GET"
 	st.ReadyToTrip = func(counts httpbreaker.Counts) bool {
-		failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-		return counts.Requests >= 3 && failureRatio >= 0.6
+		failureRatio := float64(counts.TotalFailures()) / float64(counts.Requests())
+		return counts.Requests() >= 3 && failureRatio >= 0.6
 	}
 	st.TracerTransport = http.DefaultTransport
 
