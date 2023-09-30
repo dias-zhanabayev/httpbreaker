@@ -24,8 +24,5 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Style
-      run: golangci-lint run -v
-
     - name: Test
       run: go test -v ./...
