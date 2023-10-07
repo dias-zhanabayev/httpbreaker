@@ -22,7 +22,7 @@ import (
 	"net/http"
 )
 
-var cb *httpbreaker.CircuitBreaker
+var cb http.RoundTripper
 
 func initialize() {
 	var st httpbreaker.Settings
@@ -56,6 +56,5 @@ func main() {
 	}(resp.Body)
 	fmt.Println("Response:", resp.Status)
 }
-
 
 ```

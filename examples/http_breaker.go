@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-var cb *httpbreaker.CircuitBreaker
+var cb http.RoundTripper
 
 func initialize() {
 	var st httpbreaker.Settings

@@ -56,7 +56,7 @@ type CircuitBreaker struct {
 }
 
 // NewCircuitBreaker returns a new CircuitBreaker configured with the given Settings.
-func NewCircuitBreaker(st Settings) *CircuitBreaker {
+func NewCircuitBreaker(st Settings) http.RoundTripper {
 	cb := new(CircuitBreaker)
 
 	cb.name = st.Name
